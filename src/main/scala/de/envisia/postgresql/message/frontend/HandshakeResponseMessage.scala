@@ -6,7 +6,7 @@ package de.envisia.postgresql.message.frontend
 
 import java.nio.charset.Charset
 
-case class HandshakeResponseMessage(
+private [postgresql] case class HandshakeResponseMessage(
     username: String,
     charset: Charset,
     seed: Array[Byte],

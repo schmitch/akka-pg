@@ -12,6 +12,8 @@ import de.envisia.postgresql.message.backend.ServerMessage
 class MessageParsersRegistry(charset: Charset) {
 
   private val parameterStatusParser = new ParameterStatusParser(charset)
+  private val commandCompletionParser = new CommandCompletionParser(charset)
+  private val notificationResponseParser = new NotificationResponseParser(charset)
 
   def parseFor(code: Int, msg: ByteBuffer): ServerMessage = {
     val parser = code match {
@@ -24,8 +26,10 @@ class MessageParsersRegistry(charset: Charset) {
       case ServerMessage.ParseComplete => ReturningMessageParser.ParseCompleteMessageParser
       case ServerMessage.ParameterStatus => parameterStatusParser
       case ServerMessage.ReadyForQuery => ReadyForQueryParser
+      case ServerMessage.CommandComplete => commandCompletionParser
+      case ServerMessage.NotificationResponse => notificationResponseParser
 
-      case _ => throw new Exception("ParserNotAvailableException")
+      case _ => throw new Exception(s"ParserNotAvailableException($code)")
     }
 
     parser.parseMessage(msg)

@@ -4,27 +4,27 @@
  */
 package de.envisia.postgresql.message.frontend
 
-import de.envisia.postgresql.impl.engine.PostgreClientMessage
+import de.envisia.postgresql.impl.engine3.PostgreClientMessage
 import de.envisia.postgresql.message.KindedMessage
 
-object ClientMessage {
+private [postgresql] object ClientMessage {
 
-  final val ClientProtocolVersion = 0x09
+  final val ClientProtocolVersion: Int = 0x09
   // COM_STATISTICS
-  final val Quit = 0x01
+  final val Quit: Int = 0x01
   // COM_QUIT
-  final val Query = 0x03
+  final val Query: Int = 0x03
   // COM_QUERY
-  final val PreparedStatementPrepare = 0x16
+  final val PreparedStatementPrepare: Int = 0x16
   // COM_STMT_PREPARE
-  final val PreparedStatementExecute = 0x17
+  final val PreparedStatementExecute: Int = 0x17
   // COM_STMT_EXECUTE
-  final val PreparedStatementSendLongData = 0x18
+  final val PreparedStatementSendLongData: Int = 0x18
   // COM_STMT_SEND_LONG_DATA
-  final val AuthSwitchResponse = 0xfe // AuthSwitchRequest
+  final val AuthSwitchResponse: Int = 0xfe // AuthSwitchRequest
 
 }
 
-trait ClientMessage extends KindedMessage with PostgreClientMessage {
+private[postgresql] trait ClientMessage extends KindedMessage with PostgreClientMessage {
   val kind: Int
 }

@@ -6,7 +6,7 @@ package de.envisia.postgresql.message.frontend
 
 import de.envisia.postgresql.message.backend.{ AuthenticationResponseType, ServerMessage }
 
-case class CredentialMessage(
+private [postgresql] case class CredentialMessage(
     username: String,
     password: String,
     authenticationType: AuthenticationResponseType.AuthenticationResponseType,

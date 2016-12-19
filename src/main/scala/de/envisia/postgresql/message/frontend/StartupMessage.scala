@@ -4,6 +4,6 @@
  */
 package de.envisia.postgresql.message.frontend
 
-import de.envisia.postgresql.impl.engine.PostgreClientMessage
+import de.envisia.postgresql.impl.engine3.PostgreClientMessage
 
 case class StartupMessage(parameters: List[(String, Any)]) extends PostgreClientMessage

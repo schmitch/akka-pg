@@ -16,10 +16,9 @@ import de.envisia.postgresql.util.PasswordHelper
 class CredentialEncoder(charset: Charset) {
 
   // To build a correct message we need to use BIG_ENDIAN
-  implicit val order = ByteOrder.BIG_ENDIAN
+  private implicit val order: ByteOrder = ByteOrder.BIG_ENDIAN
 
   def encode(message: CredentialMessage): ByteString = {
-
     val password = message.authenticationType match {
       case AuthenticationResponseType.Cleartext =>
         message.password.getBytes(charset)

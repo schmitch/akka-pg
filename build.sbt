@@ -1,17 +1,12 @@
-name := """akka-postgres"""
+name := """akka-pg"""
 
-version := "1.0"
+version := "1.0.0-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 
-// Change this to another test framework if you prefer
+crossScalaVersions := Seq(scalaVersion.value/*, "2.12.1"*/)
+
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-stream" % "2.4.9",
-  "com.typesafe.akka" %% "akka-http-core" % "2.4.9"
+  "com.typesafe.akka" %% "akka-stream" % "2.4.14",
+  "org.scalatest" %% "scalatest" % "3.0.0" % Test
 )
-
-//"org.scalatest" %% "scalatest" % "2.2.4" % "test"
-
-// Uncomment to use Akka
-//libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.3.11"
-
