@@ -22,3 +22,5 @@ Another possible way would be to implement that would be to actually attach a si
 
 
 Broadcast Hub ~> dynamic Connection ~> Merge Hub
+
+Reference: https://github.com/mauricio/postgresql-async

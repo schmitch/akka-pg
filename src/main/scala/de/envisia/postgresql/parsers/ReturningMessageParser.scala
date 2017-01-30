@@ -10,11 +10,11 @@ import de.envisia.postgresql.message.backend._
 
 object ReturningMessageParser {
 
-  val BindCompleteMessageParser = new ReturningMessageParser(BindComplete)
-  val CloseCompleteMessageParser = new ReturningMessageParser(CloseComplete)
-  val EmptyQueryStringMessageParser = new ReturningMessageParser(EmptyQueryString)
-  val NoDataMessageParser = new ReturningMessageParser(NoData)
-  val ParseCompleteMessageParser = new ReturningMessageParser(ParseComplete)
+  val BindCompleteMessageParser: MessageParser = new ReturningMessageParser(BindComplete)
+  val CloseCompleteMessageParser: MessageParser = new ReturningMessageParser(CloseComplete)
+  val EmptyQueryStringMessageParser: MessageParser = new ReturningMessageParser(EmptyQueryString)
+  val NoDataMessageParser: MessageParser = new ReturningMessageParser(NoData)
+  val ParseCompleteMessageParser: MessageParser = new ReturningMessageParser(ParseComplete)
 
 }
 

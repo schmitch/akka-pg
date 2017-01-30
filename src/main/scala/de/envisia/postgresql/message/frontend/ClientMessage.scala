@@ -4,7 +4,7 @@
  */
 package de.envisia.postgresql.message.frontend
 
-import de.envisia.postgresql.impl.engine3.PostgreClientMessage
+import de.envisia.postgresql.impl.engine.PostgreClientMessage
 import de.envisia.postgresql.message.KindedMessage
 
 private [postgresql] object ClientMessage {

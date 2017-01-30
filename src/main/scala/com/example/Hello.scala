@@ -2,8 +2,8 @@ package com.example
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import de.envisia.postgresql.impl.engine3.{ PostgreClientMessage, PostgresClient }
-import de.envisia.postgresql.message.frontend.QueryMessage
+import akka.stream.scaladsl.{Sink, Source}
+import de.envisia.postgresql.impl.engine.PostgresClient
 
 import scala.io.StdIn
 
@@ -14,13 +14,17 @@ object Hello {
     implicit val mat = ActorMaterializer()
     implicit val executionContext = actorSystem.dispatcher
 
-    val client = new PostgresClient("localhost", 5432, "loki", Some("loki"), Some("loki"))
+    val client = new PostgresClient("172.16.206.100", 5432, "loki", Some("loki"), Some("loki"))
 
-    client.queue.offer(new QueryMessage("LISTEN envisia;"): PostgreClientMessage)
-    client.queue.offer(new QueryMessage("LISTEN envisia;"): PostgreClientMessage)
-    client.queue.offer(new QueryMessage("LISTEN envisia;"): PostgreClientMessage)
-    client.queue.offer(new QueryMessage("LISTEN envisia;"): PostgreClientMessage)
-    client.queue.offer(new QueryMessage("LISTEN envisia;"): PostgreClientMessage)
+    client.newSource().runWith(Sink.foreach { v =>
+      println(s"V: $v")
+    })
+
+    client.newSource().runWith(Sink.foreach { v =>
+      println(s"Q: $v")
+    })
+
+    client.executeQuery("LISTEN envisia;")
 
     StdIn.readLine()
   }

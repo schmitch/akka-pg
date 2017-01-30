@@ -2,7 +2,7 @@
  * Copyright (C) 2016. envisia GmbH
  * All Rights Reserved.
  */
-package de.envisia.postgresql.impl.engine3
+package de.envisia.postgresql.impl.engine
 
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
@@ -36,7 +36,7 @@ class PostgreProtocol(charset: Charset) {
         // pass on successfully parsed PostgreMessage and strip out unparseble ones
         .mapConcat {
       case Success(cmd) => cmd :: Nil
-      case Failure(cause) => println(s"Cause: $cause"); throw cause
+      case Failure(cause) => throw cause
     }.mapConcat(identity)
 
     val writeFlow = Flow[PostgreClientMessage]
@@ -73,7 +73,7 @@ class PostgreProtocol(charset: Charset) {
         }
 
         encoder.encode(message)
-      case _ => println(s"EMPTY MSG"); ByteString.fromString("")
+      case _ => ByteString.fromString("")
     }
   }
 
@@ -91,7 +91,7 @@ class PostgreProtocol(charset: Charset) {
           val data = ByteBufferUtils.slice(buf, length)
           val result = code match {
             case ServerMessage.Authentication => AuthenticationStartupParser.parseMessage(data)
-            case sm => messageRegistry.parseFor(code, data)
+            case sm => messageRegistry.parseFor(sm, data)
           }
           next(buf, result :: messages)
         } else {

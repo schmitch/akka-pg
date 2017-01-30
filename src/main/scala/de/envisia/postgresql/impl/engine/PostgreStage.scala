@@ -2,7 +2,7 @@
  * Copyright (C) 2016. envisia GmbH
  * All Rights Reserved.
  */
-package de.envisia.postgresql.impl.engine3
+package de.envisia.postgresql.impl.engine
 
 import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
 import akka.stream.{ Attributes, BidiShape, Inlet, Outlet }
@@ -11,7 +11,7 @@ import de.envisia.postgresql.message.frontend.{ CredentialMessage, StartupMessag
 
 import scala.collection.mutable
 
-private[engine3] class PostgreStage(database: String, username: Option[String], password: Option[String])
+private[engine] class PostgreStage(database: String, username: Option[String], password: Option[String])
     extends GraphStage[BidiShape[PostgreServerMessage, PostgreServerMessage, PostgreClientMessage, PostgreClientMessage]] {
 
   private val serverIn = Inlet[PostgreServerMessage]("PGServer.in")
@@ -28,6 +28,10 @@ private[engine3] class PostgreStage(database: String, username: Option[String], 
     private var transactionStatus: Char = '0'
     private var pid: Int = 0
     private var secretKey: Int = 0
+
+    override def preStart(): Unit = {
+      println(s"preStart: ${isAvailable(clientOut)}")
+    }
 
     setHandler(serverIn, new InHandler {
       override def onPush(): Unit = {
