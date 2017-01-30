@@ -15,9 +15,11 @@ class MessageParsersRegistry(charset: Charset) {
   private val parameterStatusParser = new ParameterStatusParser(charset)
   private val commandCompletionParser = new CommandCompletionParser(charset)
   private val notificationResponseParser = new NotificationResponseParser(charset)
+  private val rowDescriptionParser = new RowDescriptionParser(charset)
 
   def parseFor(code: Int, msg: ByteBuffer): ServerMessage = {
     val parser = code match {
+      case ServerMessage.DataRow => DataRowParser
       case ServerMessage.Authentication => AuthenticationStartupParser
       case ServerMessage.BackendKeyData => BackendKeyDataParser
       case ServerMessage.BindComplete => ReturningMessageParser.BindCompleteMessageParser
@@ -30,6 +32,7 @@ class MessageParsersRegistry(charset: Charset) {
       case ServerMessage.CommandComplete => commandCompletionParser
       case ServerMessage.NotificationResponse => notificationResponseParser
       case ServerMessage.Error => errorParser
+      case ServerMessage.RowDescription => rowDescriptionParser
 
       case _ => throw new Exception(s"ParserNotAvailableException($code)")
     }

@@ -16,6 +16,11 @@ Which means that any client could attach itself to the "output stream" i.e. can 
 - [ ] More complete API, i.e. Prepared Statements (and their return), Statements with Return, Transactions
 - [ ] Query DSL
 
+## Motivation
+
+The basic idea is to use PostgreSQL as a PubSub implementation. Currently we don't want to add another server like redis to do it, just for PubSub or recreate or HA solution based on redis,
+that's why we implemented this.
+
 ## Reference Implementation of Parsers:
 
 Reference: https://github.com/mauricio/postgresql-async

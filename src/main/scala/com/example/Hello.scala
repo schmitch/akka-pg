@@ -2,12 +2,21 @@ package com.example
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.scaladsl.Sink
 import de.envisia.postgresql.impl.engine.PostgresClient
 
+import scala.concurrent.{ExecutionContext, Future}
 import scala.io.StdIn
+import scala.util.control.NonFatal
+import scala.util.{Failure, Success}
 
 object Hello {
+
+  private def exec(client: PostgresClient)(implicit ex: ExecutionContext): Future[Any] = {
+    client.executeQuery("SELECT 1;").flatMap { _ => exec(client) }.recoverWith {
+      case NonFatal(f) => println(s"FATALE: $f");exec(client)
+    }
+  }
 
   def main(args: Array[String]): Unit = {
     implicit val actorSystem = ActorSystem()
@@ -24,7 +33,14 @@ object Hello {
       println(s"Q: $v")
     })
 
-    client.executeQuery("LISTEN envisia;")
+    client.checkState.onComplete {
+      case Failure(t) => println(s"Fail: $t")
+      case Success(s) => println(s)
+        client.executeQuery("LISTEN envisia;").foreach { _ =>
+          exec(client)
+        }
+
+    }
 
     StdIn.readLine()
   }

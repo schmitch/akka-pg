@@ -4,12 +4,7 @@
  */
 package de.envisia.postgresql.message.backend
 
-import java.nio.charset.Charset
-
-import akka.util.ByteString
 import de.envisia.postgresql.message.KindedMessage
-
-import scala.util.{ Success, Try }
 
 object ServerMessage {
   final val Authentication: Byte = 'R'

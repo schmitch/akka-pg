@@ -14,3 +14,13 @@ case class EngineVar(
     password: Option[String],
     timeout: FiniteDuration
 )
+
+
+sealed trait ConnectionState
+
+object ConnectionState {
+
+  final case object Connected extends ConnectionState
+  final case object Disconnected extends ConnectionState
+
+}
