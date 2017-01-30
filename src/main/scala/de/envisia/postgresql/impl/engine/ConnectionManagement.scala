@@ -12,13 +12,22 @@ import akka.stream._
 import akka.stream.scaladsl.{Keep, Sink, SinkQueueWithCancel, Source, SourceQueueWithComplete, Tcp}
 import akka.stream.stage._
 import de.envisia.postgresql.message.backend.PostgreServerMessage
+import de.envisia.postgresql.message.frontend.QueryMessage
 
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
-private[engine] class ConnectionManagement(engine: EngineVar, bufferSize: Int = 100, reconnectTimeout: FiniteDuration = 5.seconds)(implicit actorSystem: ActorSystem, mat: Materializer) extends GraphStage[FlowShape[PostgreClientMessage, PostgreServerMessage]] {
+private[engine] class ConnectionManagement(
+    engine: EngineVar,
+    bufferSize: Int = 100,
+    reconnectTimeout: FiniteDuration = 5.seconds,
+    failureTimeout: FiniteDuration = 1.second
+)(implicit actorSystem: ActorSystem, mat: Materializer)
+    extends GraphStage[FlowShape[PostgreClientMessage, PostgreServerMessage]] {
+
   private val in = Inlet[PostgreClientMessage]("ConnectionManagement.in")
   private val out = Outlet[PostgreServerMessage]("ConnectionManagement.out")
 
@@ -26,8 +35,9 @@ private[engine] class ConnectionManagement(engine: EngineVar, bufferSize: Int = 
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
     private implicit val ec = mat.executionContext
 
-    private var source: Future[SourceQueueWithComplete[PostgreClientMessage]] = null
-    private var sink: Future[SinkQueueWithCancel[PostgreServerMessage]] = null
+    private val replay: mutable.Buffer[QueryMessage] = mutable.Buffer()
+    private var source: Future[SourceQueueWithComplete[PostgreClientMessage]] = _
+    private var sink: Future[SinkQueueWithCancel[PostgreServerMessage]] = _
     private def grabElement = {
       sink.flatMap(_.pull())
     }
@@ -37,7 +47,7 @@ private[engine] class ConnectionManagement(engine: EngineVar, bufferSize: Int = 
       Supervision.Resume
     }
 
-    private def newPromise(): Promise[SourceQueueWithComplete[PostgreClientMessage]] = {
+    private def newSourcePromise(): Promise[SourceQueueWithComplete[PostgreClientMessage]] = {
       val sourcePromise = Promise[SourceQueueWithComplete[PostgreClientMessage]]()
       source = sourcePromise.future
       sourcePromise
@@ -54,69 +64,81 @@ private[engine] class ConnectionManagement(engine: EngineVar, bufferSize: Int = 
       Fusing.aggressive(Tcp().outgoingConnection(InetSocketAddress.createUnresolved(engine.host, engine.port), connectTimeout = engine.timeout)
           .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
           .join(new PostgreStage(engine.database, engine.username, engine.password)))
-
     }
 
-    private def connect(): Unit = {
+    private def reconnect(
+        oldIp: Option[Promise[SourceQueueWithComplete[PostgreClientMessage]]] = None,
+        oldSp: Option[Promise[SinkQueueWithCancel[PostgreServerMessage]]] = None
+    ): Unit = {
+      mat.scheduleOnce(reconnectTimeout, new Runnable {
+        override def run(): Unit = {
+          val ip = oldIp.getOrElse(newSourcePromise())
+          val sp = oldSp.getOrElse(newSinkPromise())
+          connect(ip, sp)
+        }
+      })
+    }
+
+    private def connect(
+        ip: Promise[SourceQueueWithComplete[PostgreClientMessage]],
+        sp: Promise[SinkQueueWithCancel[PostgreServerMessage]]
+    ): Unit = {
       debug("Connect to PostgreSQL")
-      val ip = newPromise()
-      val sp = newSinkPromise()
-      val (source, sink) = Source.queue(bufferSize, OverflowStrategy.fail)
-          .via(connectionFlow)
+      val ((source, connection), sink) = Source.queue(bufferSize, OverflowStrategy.fail)
+          .viaMat(connectionFlow)(Keep.both)
           .toMat(Sink.queue())(Keep.both)
           .withAttributes(ActorAttributes.supervisionStrategy(decider))
           .run()
 
-      source.watchCompletion().onComplete {
-        case Success(_) =>
-          debug("Source success")
-          mat.scheduleOnce(reconnectTimeout, new Runnable {
-            override def run(): Unit = connect()
-          })
-        case Failure(t) =>
-          debug(s"Source Failed $t")
-          mat.scheduleOnce(reconnectTimeout, new Runnable {
-            override def run(): Unit = connect()
-          })
+      // Replay
+      if (replay.nonEmpty) {
+        println(s"Buffer Size: ${replay.size}")
+        replay.foreach(qm => source.offer(qm))
       }
 
-      ip.success(source)
-      sp.success(sink)
+      connection.onComplete {
+        case Success(connected) =>
+          debug(s"Connected to: $connected")
+          source.watchCompletion().onComplete {
+            case Success(_) =>
+              debug("Source success")
+              reconnect()
+            case Failure(t) =>
+              debug(s"Source Failed $t")
+              reconnect()
+          }
+          ip.success(source)
+          sp.success(sink)
+        case Failure(failure) =>
+          debug(s"Failure: $failure")
+          // on failure we just never execute the promise,
+          // so that the callback will block until we have a connection
+          reconnect(Some(ip), Some(sp))
+      }
     }
 
     override def preStart(): Unit = {
-      connect()
+      connect(newSourcePromise(), newSinkPromise())
       pull(in)
     }
 
-    private def call(callback: AsyncCallback[Try[Option[PostgreServerMessage]]]) = {
-      val elem = grabElement.map(Success(_)).recoverWith {
-        // FIXME: how to still invoke the handler in a correct manner
-        case NonFatal(t) =>
-          // we need to reconnect, maybe
-          //          debug(s"Fail: $t")
-          Future.successful(Failure(t))
-      }
-      elem.foreach(callback.invoke)
-    }
-
-    def newCallback: AsyncCallback[Try[Option[PostgreServerMessage]]] = {
-      getAsyncCallback[Try[Option[PostgreServerMessage]]] {
-        case Success(s) => s match {
-          case Some(msg) => push(out, msg)
-          case None => call(newCallback)
-        }
-        case Failure(t) => fail(out, t)
+    def newCallback: AsyncCallback[Option[PostgreServerMessage]] = {
+      // if we run into no elem, we just need to create a new callback
+      // since our stream **never** terminates
+      getAsyncCallback[Option[PostgreServerMessage]] {
+        case Some(msg) => debug("Push Element"); push(out, msg)
+        case None => debug("no elem"); grabElement.foreach(newCallback.invoke)
       }
     }
 
     setHandler(out, new OutHandler {
       override def onPull(): Unit = {
         debug("onPull")
-        call(newCallback)
+        grabElement.foreach(newCallback.invoke)
       }
 
       override def onDownstreamFinish(): Unit = {
+        // FIXME: complete our underlying stream
         debug("in1,out1, onDownstreamFinish()")
         super.onDownstreamFinish()
       }
@@ -131,6 +153,11 @@ private[engine] class ConnectionManagement(engine: EngineVar, bufferSize: Int = 
       override def onPush(): Unit = {
         debug("onPush")
         val ele = grab(in)
+        ele match {
+          case qm: QueryMessage if qm.query.startsWith("LISTEN") => replay += qm
+          case _ =>
+        }
+
         try {
           // fixme
           val callback = getAsyncCallback[QueueOfferResult] {
@@ -146,11 +173,13 @@ private[engine] class ConnectionManagement(engine: EngineVar, bufferSize: Int = 
       }
 
       override def onUpstreamFinish(): Unit = {
+        // FIXME: complete our underlying stream
         debug("in1,out1, onUpstreamFinish()")
         completeStage()
       }
 
       override def onUpstreamFailure(ex: Throwable): Unit = {
+        // FIXME: fail our underlying stream
         debug(s"onUpstreamFailure, $ex")
         super.onUpstreamFailure(ex)
       }

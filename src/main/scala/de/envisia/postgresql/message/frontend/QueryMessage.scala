@@ -6,6 +6,6 @@ package de.envisia.postgresql.message.frontend
 
 import de.envisia.postgresql.message.backend.ServerMessage
 
-class QueryMessage(val query: String) extends ClientMessage {
+case class QueryMessage(query: String) extends ClientMessage {
   override val kind: Int = ServerMessage.Query: Int
 }
