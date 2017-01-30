@@ -11,7 +11,7 @@ Which means that any client could attach itself to the "output stream" i.e. can 
 
 ## TODO:
 
-- [ ] correct Backpressure (i.e. if query is in progress, all other queries need to block the future/promise), at the moment it will just fail with a `BufferOverflowException`.
+- [ ] correct Backpressure, currently it will fail with an overflow, however the correct implementation would backpressure/drop upstream (and or throttle)
 - [ ] Java API
 - [ ] Tests
 - [ ] More complete API, i.e. Prepared Statements (and their return), Statements with Return, Transactions
@@ -25,3 +25,7 @@ that's why we implemented this.
 ## Reference Implementation of Parsers:
 
 Reference: https://github.com/mauricio/postgresql-async
+
+## Command Complections
+
+if we issue any command we will always get a `ReadyForQuery` which will indicate that we are now ready to process the next query.

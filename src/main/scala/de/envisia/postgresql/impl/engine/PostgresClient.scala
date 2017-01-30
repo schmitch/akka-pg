@@ -27,7 +27,7 @@ class PostgresClient(host: String, port: Int, database: String, username: Option
   }
 
   private def connectionFlow: Flow[PostgreClientMessage, PostgreServerMessage, () => Future[ConnectionState]] = {
-    Flow[PostgreClientMessage].viaMat(new ConnectionManagement(EngineVar(host, port, database, username, password, timeout), bufferSize))(Keep.right)
+    Flow[PostgreClientMessage].viaMat(new ConnectionManagement(EngineVar(host, port, database, username, password, timeout), bufferSize*2))(Keep.right)
   }
 
   private val ((sink, getState), source) = MergeHub.source[PostgreClientMessage](perProducerBufferSize = bufferSize)
@@ -46,7 +46,7 @@ class PostgresClient(host: String, port: Int, database: String, username: Option
   source.runWith(Sink.ignore)
 
   def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[PostgreServerMessage, NotUsed] = {
-    source.backpressureTimeout(timeout).buffer(buffer, OverflowStrategy.fail)
+    source.backpressureTimeout(timeout).buffer(buffer*2, OverflowStrategy.dropNew)
   }
 
   def executeQuery(query: String): Future[Any] = {

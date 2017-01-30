@@ -4,10 +4,11 @@
  */
 package de.envisia.postgresql.impl.engine
 
-import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
-import akka.stream.{ Attributes, BidiShape, Inlet, Outlet }
+import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import akka.stream.{Attributes, BidiShape, Inlet, Outlet}
+import de.envisia.postgresql.codec.{Dispatch, Message, SimpleMessage}
 import de.envisia.postgresql.message.backend._
-import de.envisia.postgresql.message.frontend.{ CredentialMessage, StartupMessage }
+import de.envisia.postgresql.message.frontend.{CredentialMessage, StartupMessage}
 
 import scala.collection.mutable
 
@@ -15,11 +16,11 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
     extends GraphStage[BidiShape[PostgreServerMessage, PostgreServerMessage, PostgreClientMessage, PostgreClientMessage]] {
 
   private val serverIn = Inlet[PostgreServerMessage]("PGServer.in")
-  private val serverOut = Outlet[PostgreServerMessage]("PGServer.out")
-  private val clientIn = Inlet[PostgreClientMessage]("PGClient.in")
+  private val serverOut = Outlet[Dispatch]("PGServer.out")
+  private val clientIn = Inlet[Message]("PGClient.in")
   private val clientOut = Outlet[PostgreClientMessage]("PGClient.out")
 
-  override lazy val shape: BidiShape[PostgreServerMessage, PostgreServerMessage, PostgreClientMessage, PostgreClientMessage] =
+  override lazy val shape: BidiShape[PostgreServerMessage, Dispatch, Message, PostgreClientMessage] =
     BidiShape.of(serverIn, serverOut, clientIn, clientOut)
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
     private var readyForQuery: Boolean = false
@@ -30,7 +31,7 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
     private var secretKey: Int = 0
 
     override def preStart(): Unit = {
-      println(s"preStart: ${isAvailable(clientOut)}")
+      debug(s"preStart: ${isAvailable(clientOut)}")
     }
 
     setHandler(serverIn, new InHandler {
@@ -51,11 +52,11 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
           case r: ReadyForQueryMessage =>
             transactionStatus = r.transactionStatus
             readyForQuery = true
-            println("readForQuery")
+            debug("readForQuery")
             pull(serverIn)
             pull(clientIn)
           case c: CommandCompleteMessage =>
-            println(s"CommandComplete: $c")
+            debug(s"CommandComplete: $c")
             pull(serverIn)
           case _ => push(serverOut, elem)
         }
@@ -95,6 +96,10 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
         }
       }
     })
+
+    private def debug(msg: String): Unit = {
+      println(msg)
+    }
 
   }
 
