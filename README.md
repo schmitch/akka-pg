@@ -11,6 +11,7 @@ Which means that any client could attach itself to the "output stream" i.e. can 
 
 ## TODO:
 
+- [ ] correct Backpressure (i.e. if query is in progress, all other queries need to block the future/promise), at the moment it will just fail with a `BufferOverflowException`.
 - [ ] Java API
 - [ ] Tests
 - [ ] More complete API, i.e. Prepared Statements (and their return), Statements with Return, Transactions
