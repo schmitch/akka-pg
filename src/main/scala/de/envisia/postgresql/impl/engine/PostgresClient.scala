@@ -7,7 +7,7 @@ package de.envisia.postgresql.impl.engine
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, Sink, Source }
+import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, Sink, Source, Tcp }
 import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.backend.NotificationResponse
 import de.envisia.postgresql.message.frontend.QueryMessage
@@ -23,17 +23,14 @@ class PostgresClient(
     password: Option[String],
     timeout: FiniteDuration = 5.seconds
 )(implicit actorSystem: ActorSystem, mat: Materializer) {
-
   private implicit val ec = mat.executionContext
-
   private final val bufferSize = 128
 
   private val decider: Supervision.Decider = { t =>
-    println(s"OUTER: $t")
     Supervision.Resume
   }
 
-  private def connectionFlow: Flow[InMessage, OutMessage, () => Future[ConnectionState]] = {
+  private def connectionFlow: Flow[InMessage, OutMessage, () => Future[Tcp.OutgoingConnection]] = {
     Flow[InMessage]
       .viaMat(new ConnectionManagement(EngineVar(host, port, database, username, password, timeout), bufferSize * 2))(Keep.right)
   }
@@ -65,7 +62,7 @@ class PostgresClient(
     p.future
   }
 
-  def checkState: Future[ConnectionState] = {
+  def checkState: Future[Tcp.OutgoingConnection] = {
     getState()
   }
 

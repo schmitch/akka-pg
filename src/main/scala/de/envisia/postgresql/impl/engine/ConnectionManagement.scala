@@ -13,6 +13,7 @@ import akka.stream.scaladsl.{ Keep, Sink, SinkQueueWithCancel, Source, SourceQue
 import akka.stream.stage._
 import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.frontend.QueryMessage
+import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -21,12 +22,14 @@ import scala.util.control.NonFatal
 import scala.util.{ Failure, Success }
 
 private[engine] class ConnectionManagement(
-    engine: EngineVar,
-    bufferSize: Int = 100,
-    reconnectTimeout: FiniteDuration = 5.seconds,
-    failureTimeout: FiniteDuration = 1.second
+  engine: EngineVar,
+  bufferSize: Int = 100,
+  reconnectTimeout: FiniteDuration = 5.seconds,
+  failureTimeout: FiniteDuration = 1.second
 )(implicit actorSystem: ActorSystem, mat: Materializer)
     extends GraphStageWithMaterializedValue[FlowShape[InMessage, OutMessage], () => Future[Tcp.OutgoingConnection]] {
+
+  private val logger = LoggerFactory.getLogger(classOf[ConnectionManagement])
 
   private val in = Inlet[InMessage]("ConnectionManagement.in")
   private val out = Outlet[OutMessage]("ConnectionManagement.out")
@@ -62,7 +65,7 @@ private[engine] class ConnectionManagement(
 
       private def grabElement: Future[Option[OutMessage]] = {
         sink.flatMap(_.pull()).recover {
-          case NonFatal(e) => println(s"FATAL: $e"); throw e
+          case NonFatal(e) => debug(s"FATAL: $e"); throw e
         }
       }
 
@@ -83,7 +86,7 @@ private[engine] class ConnectionManagement(
           // if there is a failure and the element has a promise, we can fail it
           case Failure(t) =>
             clear(ele, t)
-            println(s"Enqueue Failure $t")
+            debug(s"Enqueue Failure $t")
             None
         }
       }
@@ -104,8 +107,8 @@ private[engine] class ConnectionManagement(
       private def connectionFlow = {
         // TODO: Built Authentication flow i.e. startup / password around
         Fusing.aggressive(Tcp().outgoingConnection(InetSocketAddress.createUnresolved(engine.host, engine.port), connectTimeout = engine.timeout)
-            .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
-            .join(new PostgreStage(engine.database, engine.username, engine.password)))
+          .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
+          .join(new PostgreStage(engine.database, engine.username, engine.password)))
       }
 
       private def reconnect(spOpt: Option[Promise[SinkQueueWithCancel[OutMessage]]] = None): Unit = {
@@ -120,16 +123,16 @@ private[engine] class ConnectionManagement(
       }
 
       private def connect(
-          p: Promise[Tcp.OutgoingConnection],
-          ip: Promise[SourceQueueWithComplete[InMessage]],
-          sp: Promise[SinkQueueWithCancel[OutMessage]]
+        p: Promise[Tcp.OutgoingConnection],
+        ip: Promise[SourceQueueWithComplete[InMessage]],
+        sp: Promise[SinkQueueWithCancel[OutMessage]]
       ): Unit = {
         debug("Connect to PostgreSQL")
         val ((source, connection), sink) = Source.queue(bufferSize, OverflowStrategy.fail)
-            .viaMat(connectionFlow)(Keep.both)
-            .toMat(Sink.queue())(Keep.both)
-            .withAttributes(ActorAttributes.supervisionStrategy(decider))
-            .run()
+          .viaMat(connectionFlow)(Keep.both)
+          .toMat(Sink.queue())(Keep.both)
+          .withAttributes(ActorAttributes.supervisionStrategy(decider))
+          .run()
 
         connection.onComplete {
           case Success(connected) =>
@@ -139,7 +142,7 @@ private[engine] class ConnectionManagement(
             sp.success(sink)
             // Replay
             if (replay.nonEmpty) {
-              println(s"Replay Size: ${replay.size}")
+              debug(s"Replay Size: ${replay.size}")
               replay.foreach(qm => source.offer(SimpleDispatch(qm)))
             }
           case Failure(failure) =>
@@ -221,7 +224,7 @@ private[engine] class ConnectionManagement(
       })
 
       private def debug(msg: String): Unit = {
-        println(msg)
+        logger.debug(msg)
       }
 
     }

@@ -10,12 +10,15 @@ import akka.stream.{ Attributes, BidiShape, Inlet, Outlet }
 import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.backend._
 import de.envisia.postgresql.message.frontend.{ CredentialMessage, StartupMessage }
+import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 import scala.concurrent.Promise
 
 private[engine] class PostgreStage(database: String, username: Option[String], password: Option[String])
     extends GraphStage[BidiShape[PostgreServerMessage, Message, Dispatch, PostgreClientMessage]] {
+
+  private val logger = LoggerFactory.getLogger(classOf[ConnectionManagement])
 
   private val serverIn = Inlet[PostgreServerMessage]("PGServer.in")
   private val serverOut = Outlet[Message]("PGServer.out")
@@ -146,7 +149,7 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
     })
 
     private def debug(msg: String): Unit = {
-      println(msg)
+      logger.debug(msg)
     }
 
   }

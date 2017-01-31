@@ -1,4 +1,4 @@
-package com.example
+package example
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer

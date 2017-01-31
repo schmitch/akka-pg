@@ -36,6 +36,7 @@ lazy val `akka-pg` = (project in file("."))
     .settings(formattingSettings)
     .settings(
       libraryDependencies ++= Seq(
+        slf4j,
         akkaStream,
         scalaTest % Test
       )
