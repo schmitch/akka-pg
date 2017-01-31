@@ -4,7 +4,6 @@
  */
 package de.envisia.postgresql.impl.engine
 
-import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
 import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, Sink, Source, Tcp }
@@ -44,7 +43,7 @@ class PostgresClient(
   // Default Sink
   source.runWith(Sink.ignore)
 
-  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[OutMessage, UniqueKillSwitch] = {
+  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[NotificationResponse, UniqueKillSwitch] = {
     // Notifications should only be allowed to a single Backend
     source.viaMat(KillSwitches.single)(Keep.right).filter {
       case SimpleMessage(pgs) => pgs match {
@@ -52,6 +51,12 @@ class PostgresClient(
         case _ => false
       }
       case _ => false
+    }.map {
+      case SimpleMessage(pgs) => pgs match {
+        case n: NotificationResponse => n
+        case _ => throw new IllegalStateException("not a valid state")
+      }
+      case _ => throw new IllegalStateException("not a valid state")
     }.backpressureTimeout(timeout).buffer(buffer * 2, OverflowStrategy.dropNew)
   }
 

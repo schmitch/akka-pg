@@ -32,3 +32,7 @@ Reference: https://github.com/mauricio/postgresql-async
 ## Command Complections
 
 if we issue any command we will always get a `ReadyForQuery` which will indicate that we are now ready to process the next query.
+
+## Underlying Flow Switch
+
+Maybe it's possible to switch to `recoverWithRetries` and `MergeHub`/`BroadcastHub` instead of a complicated `ConnectionManagement`
