@@ -11,7 +11,7 @@ import akka.actor.ActorSystem
 import akka.stream._
 import akka.stream.scaladsl.{ Keep, Sink, SinkQueueWithCancel, Source, SourceQueueWithComplete, Tcp }
 import akka.stream.stage._
-import de.envisia.postgresql.codec.{ InMessage, OutMessage, ReturnDispatch, SimpleDispatch }
+import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.frontend.QueryMessage
 
 import scala.collection.mutable
@@ -21,10 +21,10 @@ import scala.util.control.NonFatal
 import scala.util.{ Failure, Success }
 
 private[engine] class ConnectionManagement(
-  engine: EngineVar,
-  bufferSize: Int = 100,
-  reconnectTimeout: FiniteDuration = 5.seconds,
-  failureTimeout: FiniteDuration = 1.second
+    engine: EngineVar,
+    bufferSize: Int = 100,
+    reconnectTimeout: FiniteDuration = 5.seconds,
+    failureTimeout: FiniteDuration = 1.second
 )(implicit actorSystem: ActorSystem, mat: Materializer)
     extends GraphStageWithMaterializedValue[FlowShape[InMessage, OutMessage], () => Future[Tcp.OutgoingConnection]] {
 
@@ -66,18 +66,23 @@ private[engine] class ConnectionManagement(
         }
       }
 
+      private def clear(ele: Dispatch, t: Throwable) = {
+        // clears any outstanding promises
+        ele match {
+          case ReturnDispatch(_, p) =>
+            if (!p.isCompleted) {
+              p.failure(t)
+            }
+          case _ =>
+        }
+      }
+
       private def enqueue(ele: InMessage, callback: AsyncCallback[QueueOfferResult]) = {
         source.flatMap(_.offer(ele)).onComplete {
           case Success(s) => callback.invoke(s)
           // if there is a failure and the element has a promise, we can fail it
           case Failure(t) =>
-            ele match {
-              case ReturnDispatch(_, p) =>
-                if (!p.isCompleted) {
-                  p.failure(t)
-                }
-              case _ =>
-            }
+            clear(ele, t)
             println(s"Enqueue Failure $t")
             None
         }
@@ -99,8 +104,8 @@ private[engine] class ConnectionManagement(
       private def connectionFlow = {
         // TODO: Built Authentication flow i.e. startup / password around
         Fusing.aggressive(Tcp().outgoingConnection(InetSocketAddress.createUnresolved(engine.host, engine.port), connectTimeout = engine.timeout)
-          .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
-          .join(new PostgreStage(engine.database, engine.username, engine.password)))
+            .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
+            .join(new PostgreStage(engine.database, engine.username, engine.password)))
       }
 
       private def reconnect(spOpt: Option[Promise[SinkQueueWithCancel[OutMessage]]] = None): Unit = {
@@ -115,16 +120,16 @@ private[engine] class ConnectionManagement(
       }
 
       private def connect(
-        p: Promise[Tcp.OutgoingConnection],
-        ip: Promise[SourceQueueWithComplete[InMessage]],
-        sp: Promise[SinkQueueWithCancel[OutMessage]]
+          p: Promise[Tcp.OutgoingConnection],
+          ip: Promise[SourceQueueWithComplete[InMessage]],
+          sp: Promise[SinkQueueWithCancel[OutMessage]]
       ): Unit = {
         debug("Connect to PostgreSQL")
         val ((source, connection), sink) = Source.queue(bufferSize, OverflowStrategy.fail)
-          .viaMat(connectionFlow)(Keep.both)
-          .toMat(Sink.queue())(Keep.both)
-          .withAttributes(ActorAttributes.supervisionStrategy(decider))
-          .run()
+            .viaMat(connectionFlow)(Keep.both)
+            .toMat(Sink.queue())(Keep.both)
+            .withAttributes(ActorAttributes.supervisionStrategy(decider))
+            .run()
 
         connection.onComplete {
           case Success(connected) =>
