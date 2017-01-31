@@ -8,7 +8,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.Charset
 
 import de.envisia.akka.utils.ByteBufferUtils
-import de.envisia.postgresql.message.backend.{ParameterStatusMessage, ServerMessage}
+import de.envisia.postgresql.message.backend.{ ParameterStatusMessage, ServerMessage }
 
 class ParameterStatusParser(charset: Charset) extends MessageParser {
 

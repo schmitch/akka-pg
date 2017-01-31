@@ -4,6 +4,6 @@
  */
 package de.envisia.postgresql.message
 
-private [postgresql] trait KindedMessage extends Serializable {
-  def kind : Int
+private[postgresql] trait KindedMessage extends Serializable {
+  def kind: Int
 }

@@ -13,7 +13,7 @@ import de.envisia.postgresql.message.backend.{ NotificationResponse, ServerMessa
 class NotificationResponseParser(charset: Charset) extends MessageParser {
 
   override def parseMessage(buf: ByteBuffer): ServerMessage = {
-   NotificationResponse(
+    NotificationResponse(
       buf.getInt,
       ByteBufferUtils.readCString(buf, charset),
       ByteBufferUtils.readCString(buf, charset)

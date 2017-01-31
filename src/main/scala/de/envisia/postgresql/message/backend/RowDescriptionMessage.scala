@@ -7,13 +7,13 @@ package de.envisia.postgresql.message.backend
 import de.envisia.postgresql.message.ColumnData
 
 case class PostgreSQLColumnData(
-    name: String,
-    tableObjectId: Int,
-    columnNumber: Int,
-    dataType: Int,
-    dataTypeSize: Long,
-    dataTypeModifier: Int,
-    fieldFormat: Int
+  name: String,
+  tableObjectId: Int,
+  columnNumber: Int,
+  dataType: Int,
+  dataTypeSize: Long,
+  dataTypeModifier: Int,
+  fieldFormat: Int
 ) extends ColumnData
 
 case class RowDescriptionMessage(columnDatas: Array[PostgreSQLColumnData]) extends ServerMessage {

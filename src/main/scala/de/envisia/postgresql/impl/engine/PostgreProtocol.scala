@@ -31,17 +31,17 @@ class PostgreProtocol(charset: Charset) {
 
   def serialization: BidiFlow[ByteString, PostgreServerMessage, PostgreClientMessage, ByteString, NotUsed] = {
     val readFlow = Flow[ByteString]
-        // convert ByteString to PostgreMessage
-        .map(read(_, charset))
-        // pass on successfully parsed PostgreMessage and strip out unparseble ones
-        .mapConcat {
-      case Success(cmd) => cmd :: Nil
-      case Failure(cause) => throw cause
-    }.mapConcat(identity)
+      // convert ByteString to PostgreMessage
+      .map(read(_, charset))
+      // pass on successfully parsed PostgreMessage and strip out unparseble ones
+      .mapConcat {
+        case Success(cmd) => cmd :: Nil
+        case Failure(cause) => throw cause
+      }.mapConcat(identity)
 
     val writeFlow = Flow[PostgreClientMessage]
-        // convert PostgreClientMessage to ByteString (this will add necessary Zero Bytes)
-        .map(write(_, charset))
+      // convert PostgreClientMessage to ByteString (this will add necessary Zero Bytes)
+      .map(write(_, charset))
 
     BidiFlow.fromFlows(readFlow, writeFlow)
   }

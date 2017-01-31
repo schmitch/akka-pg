@@ -7,15 +7,22 @@ package de.envisia.postgresql.impl.engine
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{BroadcastHub, Flow, Keep, MergeHub, Sink, Source, SourceQueueWithComplete}
-import de.envisia.postgresql.message.backend.PostgreServerMessage
+import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, Sink, Source }
+import de.envisia.postgresql.codec._
+import de.envisia.postgresql.message.backend.NotificationResponse
 import de.envisia.postgresql.message.frontend.QueryMessage
 
-import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
+import scala.concurrent.{ Future, Promise }
 
-class PostgresClient(host: String, port: Int, database: String, username: Option[String],
-    password: Option[String], timeout: FiniteDuration = 5.seconds)(implicit actorSystem: ActorSystem, mat: Materializer) {
+class PostgresClient(
+    host: String,
+    port: Int,
+    database: String,
+    username: Option[String],
+    password: Option[String],
+    timeout: FiniteDuration = 5.seconds
+)(implicit actorSystem: ActorSystem, mat: Materializer) {
 
   private implicit val ec = mat.executionContext
 
@@ -26,36 +33,36 @@ class PostgresClient(host: String, port: Int, database: String, username: Option
     Supervision.Resume
   }
 
-  private def connectionFlow: Flow[PostgreClientMessage, PostgreServerMessage, () => Future[ConnectionState]] = {
-    Flow[PostgreClientMessage].viaMat(new ConnectionManagement(EngineVar(host, port, database, username, password, timeout), bufferSize*2))(Keep.right)
+  private def connectionFlow: Flow[InMessage, OutMessage, () => Future[ConnectionState]] = {
+    Flow[InMessage]
+      .viaMat(new ConnectionManagement(EngineVar(host, port, database, username, password, timeout), bufferSize * 2))(Keep.right)
   }
 
-  private val ((sink, getState), source) = MergeHub.source[PostgreClientMessage](perProducerBufferSize = bufferSize)
-      .viaMat(connectionFlow)(Keep.both)
-      .withAttributes(ActorAttributes.supervisionStrategy(decider))
-      .toMat(BroadcastHub.sink[PostgreServerMessage](bufferSize = bufferSize))(Keep.both)
-      .run()
-
-  // Default Source
-  private val queue: SourceQueueWithComplete[PostgreClientMessage] = Source
-      .queue[PostgreClientMessage](bufferSize, OverflowStrategy.fail)
-      .toMat(sink)(Keep.left)
-      .run()
+  private val ((queue, getState), source) = Source.queue[InMessage](bufferSize, OverflowStrategy.dropNew)
+    .viaMat(connectionFlow)(Keep.both)
+    .withAttributes(ActorAttributes.supervisionStrategy(decider))
+    .toMat(BroadcastHub.sink[OutMessage](bufferSize = bufferSize))(Keep.both)
+    .run()
 
   // Default Sink
   source.runWith(Sink.ignore)
 
-  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[PostgreServerMessage, NotUsed] = {
-    source.backpressureTimeout(timeout).buffer(buffer*2, OverflowStrategy.dropNew)
+  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[OutMessage, NotUsed] = {
+    // Notifications should only be allowed to a single Backend
+    source.filter {
+      case SimpleMessage(pgs) => pgs match {
+        case _: NotificationResponse => true
+        case _ => false
+      }
+      case _ => false
+    }.backpressureTimeout(timeout).buffer(buffer * 2, OverflowStrategy.dropNew)
   }
 
-  def executeQuery(query: String): Future[Any] = {
-    queue.offer(QueryMessage(query)).map {
-      case QueueOfferResult.Enqueued => println("Enqueued")
-      case QueueOfferResult.Dropped => println("Dropped")
-      case QueueOfferResult.QueueClosed => throw new Exception("closed")
-      case QueueOfferResult.Failure(t) => println(s"Failure: $t")
-    }
+  def executeQuery(query: String): Future[Message] = {
+    val p = Promise[Message]()
+    // FIXME: check the offer responses
+    queue.offer(ReturnDispatch(QueryMessage(query), p))
+    p.future
   }
 
   def checkState: Future[ConnectionState] = {

@@ -6,7 +6,7 @@ package de.envisia.postgresql.parsers
 
 import java.nio.charset.Charset
 
-import de.envisia.postgresql.message.backend.{ErrorMessage, ServerMessage}
+import de.envisia.postgresql.message.backend.{ ErrorMessage, ServerMessage }
 
 class ErrorParser(charset: Charset) extends InformationParser(charset) {
 

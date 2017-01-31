@@ -7,7 +7,7 @@ package de.envisia.postgresql.parsers
 import java.nio.ByteBuffer
 
 import de.envisia.akka.utils.ByteBufferUtils
-import de.envisia.postgresql.message.backend.{AuthenticationChallengeCleartextMessage, AuthenticationChallengeMD5, AuthenticationOkMessage, ServerMessage}
+import de.envisia.postgresql.message.backend.{ AuthenticationChallengeCleartextMessage, AuthenticationChallengeMD5, AuthenticationOkMessage, ServerMessage }
 
 object AuthenticationStartupParser extends MessageParser {
 

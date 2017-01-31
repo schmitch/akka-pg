@@ -38,7 +38,7 @@ object ByteBufferUtils {
     do {
       byte = buf.get()
       count += 1
-    } while(byte != 0)
+    } while (byte != 0)
 
     buf.reset()
 

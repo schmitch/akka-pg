@@ -7,7 +7,7 @@ package de.envisia.postgresql.parsers
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
-import de.envisia.postgresql.message.backend.{DataRowMessage, ServerMessage}
+import de.envisia.postgresql.message.backend.{ DataRowMessage, ServerMessage }
 
 object DataRowParser extends MessageParser {
 

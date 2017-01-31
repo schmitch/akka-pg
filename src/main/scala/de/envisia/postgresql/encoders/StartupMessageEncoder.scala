@@ -7,7 +7,7 @@ package de.envisia.postgresql.encoders
 import java.nio.ByteOrder
 import java.nio.charset.Charset
 
-import akka.stream.scaladsl.{Flow, Source}
+import akka.stream.scaladsl.{ Flow, Source }
 import akka.util.ByteString
 import de.envisia.akka.utils.ByteStringUtils
 import de.envisia.postgresql.message.frontend.StartupMessage
@@ -22,16 +22,17 @@ class StartupMessageEncoder(charset: Charset) {
     builder.putShort(3)
     builder.putShort(0)
 
-    startup.parameters.foreach { case (key, msg) =>
-      msg match {
-        case value: String =>
-          ByteStringUtils.putCString(builder, key, charset)
-          ByteStringUtils.putCString(builder, value, charset)
-        case Some(value) =>
-          ByteStringUtils.putCString(builder, key, charset)
-          ByteStringUtils.putCString(builder, value.toString, charset)
-        case _ =>
-      }
+    startup.parameters.foreach {
+      case (key, msg) =>
+        msg match {
+          case value: String =>
+            ByteStringUtils.putCString(builder, key, charset)
+            ByteStringUtils.putCString(builder, value, charset)
+          case Some(value) =>
+            ByteStringUtils.putCString(builder, key, charset)
+            ByteStringUtils.putCString(builder, value.toString, charset)
+          case _ =>
+        }
     }
 
     builder.putByte(0)

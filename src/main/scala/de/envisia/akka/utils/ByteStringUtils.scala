@@ -4,10 +4,10 @@
  */
 package de.envisia.akka.utils
 
-import java.nio.{ByteBuffer, ByteOrder}
+import java.nio.{ ByteBuffer, ByteOrder }
 import java.nio.charset.Charset
 
-import akka.util.{ByteString, ByteStringBuilder}
+import akka.util.{ ByteString, ByteStringBuilder }
 
 object ByteStringUtils {
 

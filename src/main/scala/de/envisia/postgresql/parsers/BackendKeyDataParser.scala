@@ -6,7 +6,7 @@ package de.envisia.postgresql.parsers
 
 import java.nio.ByteBuffer
 
-import de.envisia.postgresql.message.backend.{ProcessData, ServerMessage}
+import de.envisia.postgresql.message.backend.{ ProcessData, ServerMessage }
 
 object BackendKeyDataParser extends MessageParser {
 

@@ -6,7 +6,7 @@ package de.envisia.postgresql.parsers
 
 import java.nio.ByteBuffer
 
-import de.envisia.postgresql.message.backend.{ReadyForQueryMessage, ServerMessage}
+import de.envisia.postgresql.message.backend.{ ReadyForQueryMessage, ServerMessage }
 
 object ReadyForQueryParser extends MessageParser {
 

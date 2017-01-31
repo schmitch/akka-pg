@@ -7,7 +7,7 @@ package de.envisia.postgresql.message.frontend
 import de.envisia.postgresql.impl.engine.PostgreClientMessage
 import de.envisia.postgresql.message.KindedMessage
 
-private [postgresql] object ClientMessage {
+private[postgresql] object ClientMessage {
 
   final val ClientProtocolVersion: Int = 0x09
   // COM_STATISTICS
