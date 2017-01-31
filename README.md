@@ -1,6 +1,9 @@
 Akka PostgreSQL
 ===============
 
+**Everything here is likely to change and won't be MiMa compatible in any way!!!**
+
+
 Actually this is a PostgreSQL client built with [akka-stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) and is fully non-blocking, i.e. everything will return a `Future`.
   
 The basic implementation is as follow:

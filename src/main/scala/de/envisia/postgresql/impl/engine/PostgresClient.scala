@@ -44,9 +44,9 @@ class PostgresClient(
   // Default Sink
   source.runWith(Sink.ignore)
 
-  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[OutMessage, NotUsed] = {
+  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[OutMessage, UniqueKillSwitch] = {
     // Notifications should only be allowed to a single Backend
-    source.filter {
+    source.viaMat(KillSwitches.single)(Keep.right).filter {
       case SimpleMessage(pgs) => pgs match {
         case _: NotificationResponse => true
         case _ => false
