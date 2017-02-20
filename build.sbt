@@ -49,25 +49,20 @@ pomExtra in Global := {
   <url>https://github.com/schmitch/akka-pg</url>
       <licenses>
         <license>
-          <name>Envisia License</name>
-          <url>http://git.envisia.de/schmitch</url>
+          <name>Apache License, Version 2.0</name>
+          <url>https://www.apache.org/licenses/LICENSE-2.0</url>
         </license>
       </licenses>
       <scm>
-        <connection>scm:git@git.envisia.de:sto/akka-pg.git</connection>
-        <developerConnection>scm:git:git@git.envisia.de:sto/akka-pg.git</developerConnection>
-        <url>git.envisia.de/schmitch/akka-pg</url>
+        <connection>scm:git@github.com:schmitch/akka-pg.git</connection>
+        <developerConnection>scm:git:git@github.com:schmitch/akka-pg.git</developerConnection>
+        <url>github.com/schmitch/akka-pg</url>
       </scm>
       <developers>
         <developer>
           <id>schmitch</id>
           <name>Christian Schmitt</name>
           <url>https://git.envisia.de/schmitch</url>
-        </developer>
-        <developer>
-          <id>envisia</id>
-          <name>envisia GmbH</name>
-          <url>http://git.envisia.de/envisia</url>
         </developer>
       </developers>
 }
