@@ -106,9 +106,9 @@ private[engine] class ConnectionManagement(
 
       private def connectionFlow = {
         // TODO: Built Authentication flow i.e. startup / password around
-        Fusing.aggressive(Tcp().outgoingConnection(InetSocketAddress.createUnresolved(engine.host, engine.port), connectTimeout = engine.timeout)
+        Tcp().outgoingConnection(InetSocketAddress.createUnresolved(engine.host, engine.port), connectTimeout = engine.timeout)
           .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
-          .join(new PostgreStage(engine.database, engine.username, engine.password)))
+          .join(new PostgreStage(engine.database, engine.username, engine.password))
       }
 
       private def reconnect(spOpt: Option[Promise[SinkQueueWithCancel[OutMessage]]] = None): Unit = {
