@@ -5,7 +5,7 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 import scalariform.formatter.preferences._
 
 lazy val commonSettings = Seq(
-  organization := "de.envisia",
+  organization := "de.envisia.database",
   scalaVersion := "2.12.2",
   crossScalaVersions := Seq(scalaVersion.value, "2.11.11"),
   scalacOptions in(Compile, doc) ++= Seq(
@@ -19,7 +19,7 @@ lazy val commonSettings = Seq(
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-o"),
   publishMavenStyle in ThisBuild := true,
   pomIncludeRepository in ThisBuild := { _ => false },
-  publishTo in ThisBuild := Some("Artifactory Realm" at "https://maven.envisia.de/open")
+  publishTo in ThisBuild := Some("envisia-internal" at "https://nexus.envisia.de/repository/internal/")
 )
 
 val formattingSettings = Seq(
