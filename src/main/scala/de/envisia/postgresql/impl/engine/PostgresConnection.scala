@@ -11,8 +11,7 @@ import java.util.concurrent.{ ConcurrentHashMap, ConcurrentLinkedQueue }
 
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ BidiFlow, BroadcastHub, Flow, Keep, RestartFlow, Sink, Source, Tcp }
-import akka.util.ByteString
+import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, RestartFlow, Sink, Source, Tcp }
 import akka.{ Done, NotUsed }
 import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.backend.NotificationResponse
@@ -42,12 +41,6 @@ private[engine] class PostgresConnection(
 
   private val logger = LoggerFactory.getLogger(classOf[PostgresConnection])
 
-  private val decider: Supervision.Decider = { t =>
-    // useful for Portocol Errors, that should not do any reconnect
-    logger.error("Protocol Error", t)
-    Supervision.Resume
-  }
-
   private val channels: KeySetView[String, java.lang.Boolean] = ConcurrentHashMap.newKeySet()
   // should never be called inside the decider, since basically this will only be
   // for tracking the initial connection, if the connection succeds any error will be handled
@@ -62,7 +55,6 @@ private[engine] class PostgresConnection(
     val tcpFlow = Tcp().outgoingConnection(socketAddress, connectTimeout = engine.timeout)
       .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
       .join(new PostgreStage(engine.database, engine.username, engine.password))
-      .withAttributes(ActorAttributes.supervisionStrategy(decider))
       .mapMaterializedValue(_.onComplete {
         case Success(d) =>
           state = d
@@ -83,6 +75,7 @@ private[engine] class PostgresConnection(
           })
       })
 
+    // FIXME: track flow restart and clean every ongoing promise https://github.com/akka/akka/issues/23532
     RestartFlow.withBackoff(100.milliseconds, 1.second, 0.2)(() => tcpFlow)
   }
 

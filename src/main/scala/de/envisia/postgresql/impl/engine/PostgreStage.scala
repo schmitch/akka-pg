@@ -63,6 +63,9 @@ private[impl] class PostgreStage(database: String, username: Option[String], pas
         val elem = grab(serverIn)
         logger.debug(s"Server Command: $elem")
         elem match {
+          case se: ErrorMessage =>
+            logger.debug(s"Server Error")
+            failStage(new Exception(s"Server Error: ${se.fields}"))
           case pd: ProcessData =>
             pid = pd.processId
             secretKey = pd.secretKey

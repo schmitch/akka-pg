@@ -23,6 +23,11 @@ object Hello {
     client.executeQuery("SELECT COUNT(*) FROM crm_customer;")
     client.executeQuery("SELECT * FROM crm_customer;")
 
+    for (i <- 1 to 1000000) {
+      client.executeQuery("SELECT COUNT(*) FROM crm_customer;")
+      Thread.sleep(5000)
+    }
+
     StdIn.readLine()
   }
 
