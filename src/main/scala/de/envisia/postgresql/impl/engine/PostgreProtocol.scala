@@ -16,13 +16,15 @@ import de.envisia.postgresql.encoders.{ CredentialEncoder, EncoderNotAvailableEx
 import de.envisia.postgresql.message.backend.{ PostgreServerMessage, ServerMessage }
 import de.envisia.postgresql.message.frontend.{ ClientMessage, CredentialMessage, StartupMessage }
 import de.envisia.postgresql.parsers.{ AuthenticationStartupParser, MessageParsersRegistry }
+import org.slf4j.LoggerFactory
 
 import scala.annotation.{ switch, tailrec }
+import scala.util.control.NonFatal
 import scala.util.{ Failure, Success, Try }
 
 class PostgreProtocol(charset: Charset) {
 
-  private val zero = ByteString.newBuilder.putByte(0).result()
+  private val logger = LoggerFactory.getLogger(classOf[PostgreProtocol])
 
   private val startupMessageEncoder = new StartupMessageEncoder(charset)
   private val credentialEncoder = new CredentialEncoder(charset)
@@ -30,14 +32,19 @@ class PostgreProtocol(charset: Charset) {
   private val queryEncoder = new QueryMessageEncoder(charset)
 
   def serialization: BidiFlow[ByteString, PostgreServerMessage, PostgreClientMessage, ByteString, NotUsed] = {
-    val readFlow = Flow[ByteString]
-      // convert ByteString to PostgreMessage
-      .map(read(_, charset))
-      // pass on successfully parsed PostgreMessage and strip out unparseble ones
-      .mapConcat {
-        case Success(cmd) => cmd :: Nil
-        case Failure(cause) => throw cause
-      }.mapConcat(identity)
+    val readFlow = Flow[ByteString].statefulMapConcat(() => { // convert ByteString to PostgreMessage
+      var remaining: ByteString = ByteString.empty
+
+      (bs: ByteString) =>
+        read(bs, remaining, charset) match {
+          case Success((cmd, lastBuf)) =>
+            remaining = lastBuf
+            cmd
+          case Failure(cause) =>
+            remaining = ByteString.empty
+            throw cause
+        }
+    })
 
     val writeFlow = Flow[PostgreClientMessage]
       // convert PostgreClientMessage to ByteString (this will add necessary Zero Bytes)
@@ -48,13 +55,15 @@ class PostgreProtocol(charset: Charset) {
 
   case class GroupedServerMessage(data: List[ServerMessage]) extends PostgreServerMessage
 
-  def read(bs: ByteString, charset: Charset): Try[List[ServerMessage]] = {
+  def read(bs: ByteString, remaining: ByteString, charset: Charset): Try[(List[ServerMessage], ByteString)] = {
     // fixme: create a correct decoder
     try {
-      val messages = decode(bs)
+      val messages = decode(bs, remaining)
       Success(messages)
     } catch {
-      case e: Exception => Failure(e)
+      case NonFatal(t) =>
+        logger.error("Read Message Failure", t)
+        Failure(t)
     }
   }
 
@@ -77,32 +86,46 @@ class PostgreProtocol(charset: Charset) {
     }
   }
 
-  private def decode(data: ByteString): List[ServerMessage] = {
+  private def decode(data: ByteString, remaining: ByteString): (List[ServerMessage], ByteString) = {
     @tailrec
-    def next(buf: ByteBuffer, messages: List[ServerMessage] = Nil): List[ServerMessage] = {
-      if (buf.hasRemaining) {
+    def next(buf: ByteBuffer, messages: List[ServerMessage] = Nil): (List[ServerMessage], ByteString) = {
+      // FIXME: Add SSL
+      if (buf.remaining() >= 5) {
+        buf.mark()
         val code = buf.get()
-        val lengthWithSelf = buf.getInt
+        val lengthWithSelf = buf.getInt()
         val length = lengthWithSelf - 4
+
         if (length < 0) {
           throw new Exception("negative message size exception")
         }
+
+        // if ( length > maximumMessageSize ) {
+        //   throw new MessageTooLongException(code, length, maximumMessageSize)
+        // }
+
         if (buf.remaining() >= length) {
           val data = ByteBufferUtils.slice(buf, length)
           val result = code match {
             case ServerMessage.Authentication => AuthenticationStartupParser.parseMessage(data)
             case sm => messageRegistry.parseFor(sm, data)
           }
+
           next(buf, result :: messages)
         } else {
-          throw new Exception("buffer not big enough to read messages")
+          // buffer had remaining data, reset to previous marked position and return it
+          buf.reset()
+          (messages.reverse, ByteString.fromByteBuffer(buf))
         }
       } else {
-        messages.reverse
+        (messages.reverse, ByteString.empty)
       }
     }
 
-    next(data.toByteBuffer)
+    // just concat the remaining buffer with the current one
+    // the underlying implementation will check if remaining might
+    // be empty
+    next(remaining.concat(data).toByteBuffer)
   }
 
 }

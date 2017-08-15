@@ -9,10 +9,11 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap.KeySetView
 import java.util.concurrent.{ ConcurrentHashMap, ConcurrentLinkedQueue }
 
-import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, RestartFlow, Sink, Source, Tcp }
+import akka.stream.scaladsl.{ BidiFlow, BroadcastHub, Flow, Keep, RestartFlow, Sink, Source, Tcp }
+import akka.util.ByteString
+import akka.{ Done, NotUsed }
 import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.backend.NotificationResponse
 import de.envisia.postgresql.message.frontend.QueryMessage
@@ -22,23 +23,30 @@ import scala.concurrent.duration._
 import scala.concurrent.{ ExecutionContext, Future, Promise }
 import scala.util.{ Failure, Success }
 
-class PostgresClient(
+private[engine] class PostgresConnection(
     host: String,
     port: Int,
     database: String,
     username: Option[String],
     password: Option[String],
-    timeout: FiniteDuration = 5.seconds
-)(implicit actorSystem: ActorSystem, mat: Materializer) {
+    timeout: FiniteDuration,
+    bufferSize: Int,
+    killSwitch: SharedKillSwitch
+)(implicit actorSystem: ActorSystem, mat: Materializer) extends PostgresQueryInterface {
 
   private implicit val ec: ExecutionContext = mat.executionContext
-  private final val bufferSize = 128
 
   @volatile
   private var state: Tcp.OutgoingConnection = _
   private var init = true
 
-  private val logger = LoggerFactory.getLogger(classOf[PostgresClient])
+  private val logger = LoggerFactory.getLogger(classOf[PostgresConnection])
+
+  private val decider: Supervision.Decider = { t =>
+    // useful for Portocol Errors, that should not do any reconnect
+    logger.error("Protocol Error", t)
+    Supervision.Resume
+  }
 
   private val channels: KeySetView[String, java.lang.Boolean] = ConcurrentHashMap.newKeySet()
   // should never be called inside the decider, since basically this will only be
@@ -54,6 +62,7 @@ class PostgresClient(
     val tcpFlow = Tcp().outgoingConnection(socketAddress, connectTimeout = engine.timeout)
       .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
       .join(new PostgreStage(engine.database, engine.username, engine.password))
+      .withAttributes(ActorAttributes.supervisionStrategy(decider))
       .mapMaterializedValue(_.onComplete {
         case Success(d) =>
           state = d
@@ -77,7 +86,7 @@ class PostgresClient(
     RestartFlow.withBackoff(100.milliseconds, 1.second, 0.2)(() => tcpFlow)
   }
 
-  private val (queue, source) = Source.queue[InMessage](bufferSize, OverflowStrategy.dropNew)
+  private val ((queue, killSwitches), source) = Source.queue[InMessage](bufferSize, OverflowStrategy.dropNew)
     .filter {
       // only allow queries to pass that are not completed
       case ReturnDispatch(_, promise) =>
@@ -86,6 +95,7 @@ class PostgresClient(
       case SimpleDispatch(_) => true
     }
     .viaMat(connectionFlow)(Keep.left)
+    .viaMat(killSwitch.flow)(Keep.both)
     .toMat(BroadcastHub.sink[OutMessage](bufferSize = bufferSize))(Keep.both)
     .run()
 
@@ -149,6 +159,36 @@ class PostgresClient(
   def unlisten(channel: String*): Future[Message] = {
     channel.foreach(channels.remove)
     executeQuery(s"UNLISTEN ${channel.mkString(", ")};")
+  }
+
+  def shutdown(): Future[Done] = {
+    killSwitches.shutdown()
+    queue.watchCompletion()
+  }
+
+}
+
+object PostgresConnection {
+
+  def apply(
+    host: String,
+    port: Int,
+    database: String,
+    username: Option[String],
+    password: Option[String],
+    timeout: FiniteDuration = 5.seconds
+  )(implicit actorSystem: ActorSystem, mat: Materializer): PostgresConnection = {
+    val killSwitch = KillSwitches.shared("postgres")
+    new PostgresConnection(
+      host,
+      port,
+      database,
+      username,
+      password,
+      timeout,
+      64, // bufferSize
+      killSwitch
+    )
   }
 
 }

@@ -61,6 +61,7 @@ private[impl] class PostgreStage(database: String, username: Option[String], pas
     setHandler(serverIn, new InHandler {
       override def onPush(): Unit = {
         val elem = grab(serverIn)
+        logger.debug(s"Server Command: $elem")
         elem match {
           case pd: ProcessData =>
             pid = pd.processId
