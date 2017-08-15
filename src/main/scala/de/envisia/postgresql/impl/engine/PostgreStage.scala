@@ -15,10 +15,10 @@ import org.slf4j.LoggerFactory
 import scala.collection.mutable
 import scala.concurrent.Promise
 
-private[engine] class PostgreStage(database: String, username: Option[String], password: Option[String])
+private[impl] class PostgreStage(database: String, username: Option[String], password: Option[String])
     extends GraphStage[BidiShape[PostgreServerMessage, Message, Dispatch, PostgreClientMessage]] {
 
-  private val logger = LoggerFactory.getLogger(classOf[ConnectionManagement])
+  private val logger = LoggerFactory.getLogger(classOf[PostgreStage])
 
   private val serverIn = Inlet[PostgreServerMessage]("PGServer.in")
   private val serverOut = Outlet[Message]("PGServer.out")
@@ -37,7 +37,7 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
     private var promise: Promise[Message] = null
 
     override def preStart(): Unit = {
-      debug(s"preStart: ${isAvailable(clientOut)}")
+      logger.debug(s"preStart: ${isAvailable(clientOut)}")
     }
 
     private def resolvePromise(msg: Message) = {
@@ -80,13 +80,13 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
             if (promise != null) {
               promise = null
             }
-            debug("readForQuery")
+            logger.debug("readForQuery")
             pull(serverIn)
             pull(clientIn)
           case c: CommandCompleteMessage =>
             // resolves any outstanding promises
             resolvePromise(SimpleMessage(elem))
-            debug(s"CommandComplete: $c")
+            logger.debug(s"CommandComplete: $c")
             pull(serverIn)
           case n: NotificationResponse =>
             push(serverOut, SimpleMessage(n))
@@ -147,11 +147,6 @@ private[engine] class PostgreStage(database: String, username: Option[String], p
         }
       }
     })
-
-    private def debug(msg: String): Unit = {
-      logger.debug(msg)
-    }
-
   }
 
 }

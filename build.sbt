@@ -6,7 +6,7 @@ import scalariform.formatter.preferences._
 
 lazy val commonSettings = Seq(
   organization := "de.envisia.database",
-  scalaVersion := "2.12.2",
+  scalaVersion := "2.12.3",
   scalacOptions in(Compile, doc) ++= Seq(
     "-target:jvm-1.8",
     "-deprecation",
@@ -37,6 +37,7 @@ lazy val `akka-pg` = (project in file("."))
       libraryDependencies ++= Seq(
         slf4j,
         akkaStream,
+        "ch.qos.logback" % "logback-classic" % "1.2.3" % "test",
         scalaTest % Test
       )
     )

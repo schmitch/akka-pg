@@ -1,6 +1,21 @@
 Akka PostgreSQL
 ===============
 
+## TODO / REF:
+
+- [X] Better Connection Handling
+- [X] Restart Flow (Akka 2.5.4)
+- [ ] correct Backpressure, currently it will fail with an overflow, however the correct implementation would backpressure/drop upstream (and or throttle)
+- [ ] Java API
+- [ ] Tests
+- [ ] More complete API, i.e. Prepared Statements (and their return), Statements with Return, Transactions
+- [ ] Query DSL
+
+IO Monad: https://github.com/getquill/quill/commit/cee378c19f981fce9e74b079cb700d92dcd6c786
+
+
+## Description
+
 **Everything here is likely to change and won't be MiMa compatible in any way!!!**
 
 
@@ -11,14 +26,6 @@ The basic implementation is as follow:
     Broadcast Hub ~> dynamic Connection ~> Merge Hub
     
 Which means that any client could attach itself to the "output stream" i.e. can log any message that the server will send or can actually create multiple sources to the client.
-
-## TODO:
-
-- [ ] correct Backpressure, currently it will fail with an overflow, however the correct implementation would backpressure/drop upstream (and or throttle)
-- [ ] Java API
-- [ ] Tests
-- [ ] More complete API, i.e. Prepared Statements (and their return), Statements with Return, Transactions
-- [ ] Query DSL
 
 ## Motivation
 
@@ -32,7 +39,3 @@ Reference: https://github.com/mauricio/postgresql-async
 ## Command Complections
 
 if we issue any command we will always get a `ReadyForQuery` which will indicate that we are now ready to process the next query.
-
-## Underlying Flow Switch
-
-Maybe it's possible to switch to `recoverWithRetries` and `MergeHub`/`BroadcastHub` instead of a complicated `ConnectionManagement`
