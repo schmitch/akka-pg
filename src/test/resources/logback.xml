@@ -14,7 +14,7 @@
         <appender-ref ref="STDOUT"/>
     </appender>
 
-    <logger name="de.envisia.postgresql" level="DEBUG"/>
+    <logger name="de.envisia.postgresql" level="WARN"/>
 
     <root level="WARN">
         <appender-ref ref="ASYNCSTDOUT"/>

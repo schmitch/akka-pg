@@ -1,12 +1,14 @@
 package example
 
 import akka.actor.ActorSystem
+import akka.stream.scaladsl.Sink
 import akka.stream.{ ActorMaterializer, Materializer }
 import de.envisia.postgresql.impl.engine.PostgresConnection
 
-import scala.concurrent.{ Await, ExecutionContext }
 import scala.concurrent.duration._
+import scala.concurrent.{ Await, ExecutionContext }
 import scala.io.StdIn
+import scala.util.control.NonFatal
 
 object Hello {
 
@@ -20,13 +22,14 @@ object Hello {
 
     println("Client Started")
 
-    client.executeQuery("SELECT COUNT(*) FROM crm_customer;")
-    client.executeQuery("SELECT * FROM crm_customer;")
+    Await.ready(client.executeQuery("SELECT * FROM crm_customer;").flatMap(_.runWith(Sink.seq)).map { first =>
+      println(s"First Message: $first")
 
-    for (i <- 1 to 1000000) {
-      client.executeQuery("SELECT COUNT(*) FROM crm_customer;")
-      Thread.sleep(5000)
-    }
+    }.recover {
+      case NonFatal(t) => println(s"Fail: $t")
+    }, 10.minutes)
+
+    println("p2")
 
     StdIn.readLine()
   }

@@ -4,18 +4,23 @@
  */
 package de.envisia.postgresql.impl.engine
 
-import akka.stream.scaladsl.Source
-import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
-import akka.stream.{ Attributes, BidiShape, Inlet, Outlet }
+import akka.stream._
+import akka.stream.scaladsl.{ Keep, Sink, Source }
+import akka.stream.stage._
 import de.envisia.postgresql.codec._
+import de.envisia.postgresql.impl.engine.query.{ PostgresQuery, QuerySource, SourceQueryWithComplete }
 import de.envisia.postgresql.message.backend._
 import de.envisia.postgresql.message.frontend.{ CredentialMessage, StartupMessage }
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
-import scala.concurrent.Promise
+import scala.concurrent.{ ExecutionContext, Promise }
 
-private[impl] class PostgreStage(database: String, username: Option[String], password: Option[String])
+private[postgresql] class PostgreStage(
+    database: String,
+    username: Option[String],
+    password: Option[String]
+)(implicit executionContext: ExecutionContext, mat: Materializer)
     extends GraphStage[BidiShape[PostgreServerMessage, Message, Dispatch, PostgreClientMessage]] {
 
   private val logger = LoggerFactory.getLogger(classOf[PostgreStage])
@@ -34,13 +39,17 @@ private[impl] class PostgreStage(database: String, username: Option[String], pas
     private var transactionStatus: Char = '0'
     private var pid: Int = 0
     private var secretKey: Int = 0
-    private var promise: Promise[Message] = null
+    // These variables needs to be cleaned up:
+    private var promise: Promise[PostgresQuery] = _
+    private var queryInProgress: SourceQueryWithComplete[DataRowMessage] = _
+    private var rowDescription: RowDescriptionMessage = _
+    private var commandPromise: Promise[CommandCompleteMessage] = _
 
     override def preStart(): Unit = {
       logger.debug(s"preStart: ${isAvailable(clientOut)}")
     }
 
-    private def resolvePromise(msg: Message) = {
+    private def resolvePromise(msg: PostgresQuery): Unit = {
       if (promise != null) {
         if (!promise.isCompleted) {
           promise.success(msg)
@@ -49,12 +58,25 @@ private[impl] class PostgreStage(database: String, username: Option[String], pas
       }
     }
 
-    private def failPromise(t: Throwable) = {
+    private def failPromise(t: Throwable): Unit = {
       if (promise != null) {
         if (!promise.isCompleted) {
           promise.failure(t)
           promise = null
         }
+      }
+    }
+
+    private def resetQuery(message: String): Unit = {
+      if (commandPromise != null) {
+        if (!commandPromise.isCompleted) {
+          commandPromise.tryFailure(new Exception(message))
+          commandPromise = null
+        }
+      }
+      if (queryInProgress != null) {
+        queryInProgress.fail(new Exception(message))
+        queryInProgress = null
       }
     }
 
@@ -78,6 +100,8 @@ private[impl] class PostgreStage(database: String, username: Option[String], pas
             params += ((key, value))
             pull(serverIn)
           case r: ReadyForQueryMessage =>
+            resetQuery("command not completed correctly")
+            rowDescription = null // resets current row description
             transactionStatus = r.transactionStatus
             readyForQuery = true
             // TODO: no if/else needed, probably
@@ -89,15 +113,39 @@ private[impl] class PostgreStage(database: String, username: Option[String], pas
             pull(clientIn)
           case c: CommandCompleteMessage =>
             // resolves any outstanding promises
-            resolvePromise(SimpleMessage(elem))
-            logger.debug(s"CommandComplete: $c")
+            if (commandPromise != null) {
+              commandPromise.trySuccess(c)
+              commandPromise = null
+            }
+            if (queryInProgress != null) {
+              queryInProgress.complete()
+              queryInProgress = null
+            }
             pull(serverIn)
           case n: NotificationResponse =>
             push(serverOut, SimpleMessage(n))
+          case r: RowDescriptionMessage => // incoming query
+            rowDescription = r
+            commandPromise = Promise[CommandCompleteMessage]()
+            push(serverOut, SimpleMessage(r))
+          case drm: DataRowMessage =>
+            if (queryInProgress != null) {
+              queryInProgress.offer(drm)
+            } else {
+              // FIXME: https://github.com/akka/akka/issues/22587
+              // currently talking with another Source is impossible without first materializing
+              // the stream and creating a new source with the sink
+              val (queue, publisher) = Source.fromGraph(new QuerySource[DataRowMessage]())
+                  .toMat(Sink.asPublisher(false))(Keep.both)
+                  .run()
+              queryInProgress = queue
+              queryInProgress.offer(drm)
+              resolvePromise(Source.fromPublisher(publisher).mapMaterializedValue(_ => commandPromise.future))
+            }
+            push(serverOut, SimpleMessage(drm))
           case _ =>
             // resolves any outstanding promises
-            resolvePromise(SimpleMessage(elem))
-            push(serverOut, MultiMessage(Source.single(elem)))
+            push(serverOut, SimpleMessage(elem))
         }
       }
 
