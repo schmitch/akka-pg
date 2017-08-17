@@ -23,7 +23,7 @@ object Hello {
     println("Client Started")
 
     Await.ready(client.executeQuery("SELECT * FROM crm_customer;").flatMap(_.runWith(Sink.seq)).map { first =>
-      println(s"First Message: $first")
+      println(s"First Message: ${first.length}")
 
     }.recover {
       case NonFatal(t) => println(s"Fail: $t")

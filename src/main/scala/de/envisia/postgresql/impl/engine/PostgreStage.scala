@@ -4,23 +4,25 @@
  */
 package de.envisia.postgresql.impl.engine
 
+import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ Keep, Sink, Source }
+import akka.stream.scaladsl.{ Keep, Sink, Source, SourceQueueWithComplete }
 import akka.stream.stage._
 import de.envisia.postgresql.codec._
-import de.envisia.postgresql.impl.engine.query.{ PostgresQuery, QuerySource, SourceQueryWithComplete }
+import de.envisia.postgresql.impl.engine.query.PostgresQuery
 import de.envisia.postgresql.message.backend._
 import de.envisia.postgresql.message.frontend.{ CredentialMessage, StartupMessage }
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
+import scala.concurrent.duration._
 import scala.concurrent.{ ExecutionContext, Promise }
 
 private[postgresql] class PostgreStage(
-    database: String,
-    username: Option[String],
-    password: Option[String]
-)(implicit executionContext: ExecutionContext, mat: Materializer)
+  database: String,
+  username: Option[String],
+  password: Option[String]
+)(implicit actorSystem: ActorSystem, executionContext: ExecutionContext, mat: Materializer)
     extends GraphStage[BidiShape[PostgreServerMessage, Message, Dispatch, PostgreClientMessage]] {
 
   private val logger = LoggerFactory.getLogger(classOf[PostgreStage])
@@ -41,7 +43,7 @@ private[postgresql] class PostgreStage(
     private var secretKey: Int = 0
     // These variables needs to be cleaned up:
     private var promise: Promise[PostgresQuery] = _
-    private var queryInProgress: SourceQueryWithComplete[DataRowMessage] = _
+    private var queryInProgress: SourceQueueWithComplete[DataRowMessage] = _
     private var rowDescription: RowDescriptionMessage = _
     private var commandPromise: Promise[CommandCompleteMessage] = _
 
@@ -78,6 +80,21 @@ private[postgresql] class PostgreStage(
         queryInProgress.fail(new Exception(message))
         queryInProgress = null
       }
+    }
+
+    private var current: DataRowMessage = _
+    private val callback: AsyncCallback[QueueOfferResult] = getAsyncCallback {
+      case QueueOfferResult.Enqueued => push(serverOut, SimpleMessage(current))
+      case QueueOfferResult.Dropped =>
+        reschedule()
+      case QueueOfferResult.Failure(t) =>
+        logger.error("Queue Failure, retry", t)
+        reschedule()
+      case QueueOfferResult.QueueClosed => // no need to handle
+    }
+
+    private def reschedule() = {
+      actorSystem.scheduler.scheduleOnce(5.milliseconds)(() => queryInProgress.offer(current).foreach(callback.invoke))
     }
 
     setHandler(serverIn, new InHandler {
@@ -130,19 +147,20 @@ private[postgresql] class PostgreStage(
             push(serverOut, SimpleMessage(r))
           case drm: DataRowMessage =>
             if (queryInProgress != null) {
-              queryInProgress.offer(drm)
+              current = drm
+              queryInProgress.offer(current).foreach(callback.invoke)
             } else {
               // FIXME: https://github.com/akka/akka/issues/22587
               // currently talking with another Source is impossible without first materializing
               // the stream and creating a new source with the sink
-              val (queue, publisher) = Source.fromGraph(new QuerySource[DataRowMessage]())
-                  .toMat(Sink.asPublisher(false))(Keep.both)
-                  .run()
+              current = drm
+              val (queue, publisher) = Source.queue[DataRowMessage](50, OverflowStrategy.backpressure)
+                .toMat(Sink.asPublisher(false))(Keep.both)
+                .run()
               queryInProgress = queue
-              queryInProgress.offer(drm)
+              queryInProgress.offer(current).foreach(callback.invoke)
               resolvePromise(Source.fromPublisher(publisher).mapMaterializedValue(_ => commandPromise.future))
             }
-            push(serverOut, SimpleMessage(drm))
           case _ =>
             // resolves any outstanding promises
             push(serverOut, SimpleMessage(elem))
