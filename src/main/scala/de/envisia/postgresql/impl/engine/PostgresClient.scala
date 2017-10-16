@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap.KeySetView
 import java.util.concurrent.{ ConcurrentHashMap, ConcurrentLinkedQueue }
 
-import akka.NotUsed
+import akka.{ Done, NotUsed }
 import akka.actor.ActorSystem
 import akka.stream._
 import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, RestartFlow, Sink, Source, Tcp }
@@ -77,20 +77,25 @@ class PostgresClient(
     RestartFlow.withBackoff(100.milliseconds, 1.second, 0.2)(() => tcpFlow)
   }
 
-  private val (queue, source) = Source.queue[InMessage](bufferSize, OverflowStrategy.dropNew)
-    .filter {
-      // only allow queries to pass that are not completed
-      case ReturnDispatch(_, promise) =>
-        queryQueue.remove(promise) // removes all queries from the queue
-        !promise.isCompleted
-      case SimpleDispatch(_) => true
-    }
-    .viaMat(connectionFlow)(Keep.left)
-    .toMat(BroadcastHub.sink[OutMessage](bufferSize = bufferSize))(Keep.both)
-    .run()
+  private val (queue, killSwitch, source) = {
+    val ((innerQueue, innerKillSwitch), innerSource) = Source.queue[InMessage](bufferSize, OverflowStrategy.dropNew)
+        .filter {
+          // only allow queries to pass that are not completed
+          case ReturnDispatch(_, promise) =>
+            queryQueue.remove(promise) // removes all queries from the queue
+            !promise.isCompleted
+          case SimpleDispatch(_) => true
+        }
+        .viaMat(connectionFlow)(Keep.left)
+        .viaMat(KillSwitches.single)(Keep.both)
+        .toMat(BroadcastHub.sink[OutMessage](bufferSize = bufferSize))(Keep.both)
+        .run()
 
-  // Default Sink
-  source.runWith(Sink.ignore)
+    (innerQueue, innerKillSwitch, innerSource)
+  }
+
+  // Default Sink, will run on startup
+  private val doneFuture = source.runWith(Sink.ignore)
 
   def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[NotificationResponse, UniqueKillSwitch] = {
     // Notifications should only be allowed to a single Backend
@@ -149,6 +154,11 @@ class PostgresClient(
   def unlisten(channel: String*): Future[Message] = {
     channel.foreach(channels.remove)
     executeQuery(s"UNLISTEN ${channel.mkString(", ")};")
+  }
+
+  def stop(): Future[Done] = {
+    killSwitch.shutdown()
+    doneFuture
   }
 
 }
