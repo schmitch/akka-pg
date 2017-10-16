@@ -7,20 +7,28 @@ package de.envisia.postgresql.impl.engine
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap.KeySetView
-import java.util.concurrent.{ ConcurrentHashMap, ConcurrentLinkedQueue }
+import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedQueue}
 
-import akka.{ Done, NotUsed }
+import akka.{Done, NotUsed}
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ BroadcastHub, Flow, Keep, RestartFlow, Sink, Source, Tcp }
+import akka.stream.scaladsl.{
+  BroadcastHub,
+  Flow,
+  Keep,
+  RestartFlow,
+  Sink,
+  Source,
+  Tcp
+}
 import de.envisia.postgresql.codec._
 import de.envisia.postgresql.message.backend.NotificationResponse
 import de.envisia.postgresql.message.frontend.QueryMessage
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
-import scala.concurrent.{ ExecutionContext, Future, Promise }
-import scala.util.{ Failure, Success }
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 class PostgresClient(
     host: String,
@@ -40,7 +48,8 @@ class PostgresClient(
 
   private val logger = LoggerFactory.getLogger(classOf[PostgresClient])
 
-  private val channels: KeySetView[String, java.lang.Boolean] = ConcurrentHashMap.newKeySet()
+  private val channels: KeySetView[String, java.lang.Boolean] =
+    ConcurrentHashMap.newKeySet()
   // should never be called inside the decider, since basically this will only be
   // for tracking the initial connection, if the connection succeds any error will be handled
   // by the PostgreStage/PostgreProtocol
@@ -48,10 +57,12 @@ class PostgresClient(
 
   private def connectionFlow: Flow[InMessage, OutMessage, NotUsed] = {
     val engine = EngineVar(host, port, database, username, password, timeout)
-    val socketAddress = InetSocketAddress.createUnresolved(engine.host, engine.port)
+    val socketAddress =
+      InetSocketAddress.createUnresolved(engine.host, engine.port)
 
     // Full TCP Flow Client that will be restarted whenever needed by the RestartFlow
-    val tcpFlow = Tcp().outgoingConnection(socketAddress, connectTimeout = engine.timeout)
+    val tcpFlow = Tcp()
+      .outgoingConnection(socketAddress, connectTimeout = engine.timeout)
       .join(new PostgreProtocol(StandardCharsets.UTF_8).serialization)
       .join(new PostgreStage(engine.database, engine.username, engine.password))
       .mapMaterializedValue(_.onComplete {
@@ -78,40 +89,53 @@ class PostgresClient(
   }
 
   private val (queue, killSwitch, source) = {
-    val ((innerQueue, innerKillSwitch), innerSource) = Source.queue[InMessage](bufferSize, OverflowStrategy.dropNew)
-        .filter {
-          // only allow queries to pass that are not completed
-          case ReturnDispatch(_, promise) =>
-            queryQueue.remove(promise) // removes all queries from the queue
-            !promise.isCompleted
-          case SimpleDispatch(_) => true
-        }
-        .viaMat(connectionFlow)(Keep.left)
-        .viaMat(KillSwitches.single)(Keep.both)
-        .toMat(BroadcastHub.sink[OutMessage](bufferSize = bufferSize))(Keep.both)
-        .run()
+    val sharedKillSwitch = KillSwitches.shared("akka-pg")
 
-    (innerQueue, innerKillSwitch, innerSource)
+    val (innerQueue, innerSource) = Source
+      .queue[InMessage](bufferSize, OverflowStrategy.dropNew)
+      .filter {
+        // only allow queries to pass that are not completed
+        case ReturnDispatch(_, promise) =>
+          queryQueue.remove(promise) // removes all queries from the queue
+          !promise.isCompleted
+        case SimpleDispatch(_) => true
+      }
+      .via(sharedKillSwitch.flow)
+      .viaMat(connectionFlow)(Keep.left)
+      .toMat(BroadcastHub.sink[OutMessage](bufferSize = bufferSize))(Keep.both)
+      .run()
+
+    (innerQueue, sharedKillSwitch, innerSource)
   }
 
   // Default Sink, will run on startup
-  private val doneFuture = source.runWith(Sink.ignore)
+  private val doneFuture = source.via(killSwitch.flow).runWith(Sink.ignore)
 
-  def newSource(buffer: Int = bufferSize, timeout: FiniteDuration = 5.seconds): Source[NotificationResponse, UniqueKillSwitch] = {
+  def newSource(
+      buffer: Int = bufferSize,
+      timeout: FiniteDuration = 5.seconds
+  ): Source[NotificationResponse, NotUsed] = {
     // Notifications should only be allowed to a single Backend
-    source.viaMat(KillSwitches.single)(Keep.right).filter {
-      case SimpleMessage(pgs) => pgs match {
-        case _: NotificationResponse => true
+    source
+      .via(killSwitch.flow)
+      .filter {
+        case SimpleMessage(pgs) =>
+          pgs match {
+            case _: NotificationResponse => true
+            case _                       => false
+          }
         case _ => false
       }
-      case _ => false
-    }.map {
-      case SimpleMessage(pgs) => pgs match {
-        case n: NotificationResponse => n
+      .map {
+        case SimpleMessage(pgs) =>
+          pgs match {
+            case n: NotificationResponse => n
+            case _                       => throw new IllegalStateException("not a valid state")
+          }
         case _ => throw new IllegalStateException("not a valid state")
       }
-      case _ => throw new IllegalStateException("not a valid state")
-    }.backpressureTimeout(timeout).buffer(buffer * 2, OverflowStrategy.dropNew)
+      .backpressureTimeout(timeout)
+      .buffer(buffer * 2, OverflowStrategy.dropNew)
   }
 
   def executeQuery(query: String): Future[Message] = {
@@ -133,24 +157,24 @@ class PostgresClient(
   }
 
   /**
-   * Listen to Postgres Notifications
-   * This command will add the channel to replayeable fields
-   *
-   * @param channel a channel to listen to
-   * @return a Postgres Query Message, which will yield for success
-   */
+    * Listen to Postgres Notifications
+    * This command will add the channel to replayeable fields
+    *
+    * @param channel a channel to listen to
+    * @return a Postgres Query Message, which will yield for success
+    */
   def listen(channel: String): Future[Message] = {
     channels.add(channel)
     executeQuery(s"LISTEN $channel;")
   }
 
   /**
-   * Unlisten to Postgres Notifications
-   * This command will remove the channel from the replayeable fields
-   *
-   * @param channel channels to unlisten to
-   * @return a Postgres Query Message, which will yield for success
-   */
+    * Unlisten to Postgres Notifications
+    * This command will remove the channel from the replayeable fields
+    *
+    * @param channel channels to unlisten to
+    * @return a Postgres Query Message, which will yield for success
+    */
   def unlisten(channel: String*): Future[Message] = {
     channel.foreach(channels.remove)
     executeQuery(s"UNLISTEN ${channel.mkString(", ")};")
