@@ -7,9 +7,9 @@ package de.envisia.postgresql.impl.engine
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap.KeySetView
-import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedQueue}
+import java.util.concurrent.{ ConcurrentHashMap, ConcurrentLinkedQueue }
 
-import akka.{Done, NotUsed}
+import akka.{ Done, NotUsed }
 import akka.actor.ActorSystem
 import akka.stream._
 import akka.stream.scaladsl.{
@@ -27,8 +27,8 @@ import de.envisia.postgresql.message.frontend.QueryMessage
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.util.{Failure, Success}
+import scala.concurrent.{ ExecutionContext, Future, Promise }
+import scala.util.{ Failure, Success }
 
 class PostgresClient(
     host: String,
@@ -112,8 +112,8 @@ class PostgresClient(
   private val doneFuture = source.via(killSwitch.flow).runWith(Sink.ignore)
 
   def newSource(
-      buffer: Int = bufferSize,
-      timeout: FiniteDuration = 5.seconds
+    buffer: Int = bufferSize,
+    timeout: FiniteDuration = 5.seconds
   ): Source[NotificationResponse, NotUsed] = {
     // Notifications should only be allowed to a single Backend
     source
@@ -122,7 +122,7 @@ class PostgresClient(
         case SimpleMessage(pgs) =>
           pgs match {
             case _: NotificationResponse => true
-            case _                       => false
+            case _ => false
           }
         case _ => false
       }
@@ -130,7 +130,7 @@ class PostgresClient(
         case SimpleMessage(pgs) =>
           pgs match {
             case n: NotificationResponse => n
-            case _                       => throw new IllegalStateException("not a valid state")
+            case _ => throw new IllegalStateException("not a valid state")
           }
         case _ => throw new IllegalStateException("not a valid state")
       }
@@ -157,24 +157,24 @@ class PostgresClient(
   }
 
   /**
-    * Listen to Postgres Notifications
-    * This command will add the channel to replayeable fields
-    *
-    * @param channel a channel to listen to
-    * @return a Postgres Query Message, which will yield for success
-    */
+   * Listen to Postgres Notifications
+   * This command will add the channel to replayeable fields
+   *
+   * @param channel a channel to listen to
+   * @return a Postgres Query Message, which will yield for success
+   */
   def listen(channel: String): Future[Message] = {
     channels.add(channel)
     executeQuery(s"LISTEN $channel;")
   }
 
   /**
-    * Unlisten to Postgres Notifications
-    * This command will remove the channel from the replayeable fields
-    *
-    * @param channel channels to unlisten to
-    * @return a Postgres Query Message, which will yield for success
-    */
+   * Unlisten to Postgres Notifications
+   * This command will remove the channel from the replayeable fields
+   *
+   * @param channel channels to unlisten to
+   * @return a Postgres Query Message, which will yield for success
+   */
   def unlisten(channel: String*): Future[Message] = {
     channel.foreach(channels.remove)
     executeQuery(s"UNLISTEN ${channel.mkString(", ")};")
@@ -182,6 +182,10 @@ class PostgresClient(
 
   def stop(): Future[Done] = {
     killSwitch.shutdown()
+    Future.successful(Done)
+  }
+
+  def awaitStop(): Future[Done] = {
     doneFuture
   }
 
