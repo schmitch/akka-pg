@@ -36,7 +36,8 @@ class PostgresClient(
     database: String,
     username: Option[String],
     password: Option[String],
-    timeout: FiniteDuration = 5.seconds
+    timeout: FiniteDuration = 5.seconds,
+    defaultSourceFunction: NotificationResponse => Future[Any] = any => Future.successful(any)
 )(implicit actorSystem: ActorSystem, mat: Materializer) {
 
   private implicit val ec: ExecutionContext = mat.executionContext
@@ -108,16 +109,8 @@ class PostgresClient(
     (innerQueue, sharedKillSwitch, innerSource)
   }
 
-  // Default Sink, will run on startup
-  private val doneFuture = source.via(killSwitch.flow).runWith(Sink.ignore)
-
-  def newSource(
-    buffer: Int = bufferSize,
-    timeout: FiniteDuration = 5.seconds
-  ): Source[NotificationResponse, NotUsed] = {
-    // Notifications should only be allowed to a single Backend
-    source
-      .via(killSwitch.flow)
+  private def notificationFilter = {
+    Flow[OutMessage]
       .filter {
         case SimpleMessage(pgs) =>
           pgs match {
@@ -134,6 +127,23 @@ class PostgresClient(
           }
         case _ => throw new IllegalStateException("not a valid state")
       }
+  }
+
+  /**
+   * Default Sink, will run on startup
+   */
+  private val doneFuture = {
+    source.via(killSwitch.flow).via(notificationFilter).mapAsync(1)(defaultSourceFunction).runWith(Sink.ignore)
+  }
+
+  def newSource(
+    buffer: Int = bufferSize,
+    timeout: FiniteDuration = 5.seconds
+  ): Source[NotificationResponse, NotUsed] = {
+    // Notifications should only be allowed to a single Backend
+    source
+      .via(killSwitch.flow)
+      .via(notificationFilter)
       .backpressureTimeout(timeout)
       .buffer(buffer * 2, OverflowStrategy.dropNew)
   }
