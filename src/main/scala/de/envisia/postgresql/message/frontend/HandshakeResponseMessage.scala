@@ -7,12 +7,12 @@ package de.envisia.postgresql.message.frontend
 import java.nio.charset.Charset
 
 private[postgresql] case class HandshakeResponseMessage(
-    username: String,
-    charset: Charset,
-    seed: Array[Byte],
-    authenticationMethod: String,
-    password: Option[String] = None,
-    database: Option[String] = None
+  username: String,
+  charset: Charset,
+  seed: Array[Byte],
+  authenticationMethod: String,
+  password: Option[String] = None,
+  database: Option[String] = None
 ) extends ClientMessage {
   override val kind: Int = ClientMessage.ClientProtocolVersion
 }

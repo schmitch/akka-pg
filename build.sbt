@@ -1,12 +1,13 @@
 import Dependencies._
 import com.typesafe.sbt.SbtScalariform.ScalariformKeys
-import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
+import ReleaseTransformations._
 
 import scalariform.formatter.preferences._
 
 lazy val commonSettings = Seq(
   organization := "de.envisia.database",
-  scalaVersion := "2.12.3",
+  scalaVersion := "2.12.8",
+  crossScalaVersions := Seq("2.12.8", "2.13.0"),
   scalacOptions in(Compile, doc) ++= Seq(
     "-target:jvm-1.8",
     "-deprecation",
@@ -68,17 +69,16 @@ pomExtra in Global := {
 }
 
 releaseCrossBuild := true
-
 releaseProcess := Seq[ReleaseStep](
-  checkSnapshotDependencies,
-  inquireVersions,
-  runClean,
-  runTest,
-  setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  ReleaseStep(action = Command.process("publishSigned", _), enableCrossBuild = true),
-  setNextVersion,
-  commitNextVersion,
-  pushChanges
+  checkSnapshotDependencies,              // : ReleaseStep
+  inquireVersions,                        // : ReleaseStep
+  runClean,                               // : ReleaseStep
+  runTest,                                // : ReleaseStep
+  setReleaseVersion,                      // : ReleaseStep
+  commitReleaseVersion,                   // : ReleaseStep, performs the initial git checks
+  tagRelease,                             // : ReleaseStep
+  releaseStepCommandAndRemaining("+publishSigned"), //publishArtifacts,                       // : ReleaseStep, checks whether `publishTo` is properly set up
+  setNextVersion,                         // : ReleaseStep
+  commitNextVersion,                      // : ReleaseStep
+  pushChanges                             // : ReleaseStep, also checks that an upstream branch is properly configured
 )

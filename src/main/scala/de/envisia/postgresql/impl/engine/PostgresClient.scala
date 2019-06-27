@@ -31,13 +31,13 @@ import scala.concurrent.{ ExecutionContext, Future, Promise }
 import scala.util.{ Failure, Success }
 
 class PostgresClient(
-    host: String,
-    port: Int,
-    database: String,
-    username: Option[String],
-    password: Option[String],
-    timeout: FiniteDuration = 5.seconds,
-    defaultSourceFunction: NotificationResponse => Future[Any] = any => Future.successful(any)
+  host: String,
+  port: Int,
+  database: String,
+  username: Option[String],
+  password: Option[String],
+  timeout: FiniteDuration = 5.seconds,
+  defaultSourceFunction: NotificationResponse => Future[Any] = any => Future.successful(any)
 )(implicit actorSystem: ActorSystem, mat: Materializer) {
 
   private implicit val ec: ExecutionContext = mat.executionContext
@@ -86,7 +86,7 @@ class PostgresClient(
           })
       })
 
-    RestartFlow.withBackoff(100.milliseconds, 1.second, 0.2)(() => tcpFlow)
+    RestartFlow.withBackoff(1.second, 5.seconds, 0.2)(() => tcpFlow)
   }
 
   private val (queue, killSwitch, source) = {
